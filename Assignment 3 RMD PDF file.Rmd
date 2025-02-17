@@ -1,0 +1,143 @@
+---
+title: "Assignment 3 Bootstrap"
+author: "Ghatta Trivedi"
+date: "2025-02-16"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+
+```{r}
+#setting up basic parameters
+#num of simulations
+n <- 1000
+#num of bootstrap resamples
+nboot <- 10000
+#sample sizes
+nval <- c(3,10,30,100)
+#significance levels
+alphaval <- c(0.1,0.05)
+
+#function to calculate pivotal bootstrap ci 
+bootstrap <- function(data, nboot, alpha){
+  
+  #resample with replacement nboot times 
+  bootsamples <- replicate(nboot, sample(data, length(data), replace = TRUE))
+  #this computes the mean of each bootstrap sample. apply is used to apply the mean function to each column
+  bootmeans <- apply(bootsamples,2,mean)
+  
+  #pivotal ci calc
+  #Computes the mean of the original data
+  theta <- mean(data)
+  #calculates the difference between the bootstrap samples and the original sample mean
+  error <- bootmeans - theta
+  #these lines calculate the quantiles for the lower and upepr bounds of the CI
+  q1 <- quantile(error, alpha/2)
+  q2 <- quantile(error, 1 - (alpha/2))
+  
+  #the lower and upper bounds of the C are calc by adjusting the original mean by the quantiles of the bootstrap error distributution
+  CIlower <- theta - q2
+  CIupper <- theta - q1
+
+  return(c(CIlower, CIupper))
+  
+}
+
+#defines a function that calculates a ci using the central limit theorem
+CLT <- function(data, alpha){
+  #determines the sample size of the input data
+  n <- length(data)
+  #computes the sample mean
+  xbar <- mean(data)
+  #compute the sample deviation
+  s <- sd(data)
+  #calculates the zscore for the normal distribution corresponsing to the alpha.
+  z <- qnorm(1-alpha/2)
+  #calculates the error margin for the CI 
+  errormargin <- z*s/sqrt(n)
+  return(c(x_bar - errormargin, xbar + errormargin))
+}
+
+#function to run simulations and compare the coverage of the bootstrap and CLT confidence intervals
+simulation <- function(n, alpha){
+  #defines the true mean, which is the exponential of 0.5
+  truemean <- exp(0.5)
+  #initialize counters for the number of times the true mean falls within the clt and bootstrap CI 
+  CLTcov <- 0
+  bootcov <- 0
+  
+  for(i in 1:1000){
+    #generates a random sample
+    sampledata <- rlnorm(1000, meanlog = 0, sdlog = 1)
+    #compute the clt-based ci for the current sample
+    CLTval <- CLT(sampledata, alpha)
+    #check if the true mean falls within the clt ci
+    if(truemean >= CLTval[1] && truemean <= CLTval[2]){
+      #if so, then increment cltcov
+      CLTcov <- CLTcov + 1
+      
+    }
+    
+    #compute the bootstrap ci
+    bootstrapval <- bootstrap(sampledata, nboot, alpha)
+    #check if true mean falls within the bootstrap ci. if so, increment bootcov 
+    if(truemean >= bootstrapval[1] && truemean <= bootstrapval[2]){
+      bootcov <- bootcov + 1
+    }
+  }
+      return(c(CLTcov/n, bootcov /n))
+
+}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
