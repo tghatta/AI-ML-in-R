@@ -1,0 +1,180 @@
+---
+title: "Assignment 4"
+author: "Ghatta Trivedi"
+date: "2025-02-28"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+
+
+```{r}
+# Required Libraries
+library(ISLR)
+library(leaps)
+library(lars)
+
+
+set.seed(111)
+data(Auto) # Load data
+
+# Prepare data for each country
+# Remove name
+Auto <- Auto[, -9]  
+# Remove origin 
+Auto.usa <- Auto[Auto$origin == 1, -8] 
+Auto.germany <- Auto[Auto$origin == 2, -8]
+Auto.japan <- Auto[Auto$origin == 3, -8]
+
+
+
+```
+
+
+```{r}
+
+# Function to create second-order polynomial terms
+matrix.2ndorder.make <- function(x, only.quad = F) {
+  x0 <- x
+  dimn <- dimnames(x)[[2]] # Extract column names
+  num.col <- length(x[1,]) # Number of columns
+  
+  for(i in 1:num.col) {
+    if (!only.quad) {
+      for(j in i:num.col) {
+        x0 <- cbind(x0, x[, i] * x[, j]) # Interaction term
+        dimn <- c(dimn, paste(dimn[i], dimn[j], sep = ":"))
+      }
+    } else {
+      # Squared terms
+      x0 <- cbind(x0, x[, i] * x[, i]) # Squared term
+      dimn <- c(dimn, paste(dimn[i], "2", sep = ":"))
+    }
+  }
+  dimnames(x0)[[2]] <- dimn
+  return(x0)
+}
+```
+
+
+
+```{r}
+process_country_data <- function(data) {
+   # Prepare data
+  X <- as.matrix(data[, -1])  # Exclude mpg
+  X_quad <- matrix.2ndorder.make(X)  # Add quadratic terms
+  y <- data$mpg # Predict mpg
+  
+  # Split into training and testing sets
+  train_indices <- sample(1:nrow(data), 0.7 * nrow(data)) # 70% training dataset
+  train_X <- X_quad[train_indices, ]
+  test_X <- X_quad[-train_indices, ]
+  train_y <- y[train_indices]
+  test_y <- y[-train_indices]
+  
+  # LEAPS model
+  leaps_fit <- regsubsets(train_X, train_y, nvmax = 20, method = "forward")
+  cp_values <- summary(leaps_fit)$cp
+  
+  # Task 1: Find 5 best Cp models using leaps
+  top_models <- order(cp_values)[1:5]
+  press_values <- sapply(top_models, function(i) {
+    vars <- coef(leaps_fit, id = i)
+    model <- lm(train_y ~ train_X[, names(vars)[-1]] - 1)
+    calculate_PRESS(model)
+  })
+  
+  # Use PRESS to find the best model using leaps
+  best_leaps <- top_models[which.min(press_values)]
+  leaps_coef <- coef(leaps_fit, id = best_leaps)
+  
+  # Find Best LARS model
+  lars_fit <- lars(train_X, train_y, type = "lasso")
+  best_lars <- which.min(lars_fit$Cp)
+  lars_coef <- predict(lars_fit, s = best_lars, type = "coefficients")$coefficients
+  
+  # Predictions
+  leaps_pred <- test_X[, names(leaps_coef)[-1]] %*% leaps_coef[-1]
+  lars_pred <- test_X %*% lars_coef
+  
+  # Plot results
+  par(mfrow = c(1, 2))
+  plot(leaps_pred, test_y, main = paste("LEAPS Cor:", round(cor(leaps_pred, test_y), 3)))
+  plot(lars_pred, test_y, main = paste("LARS Cor:", round(cor(lars_pred, test_y), 3)))
+  
+  # Return selected variables
+  list(
+    leaps_coef = names(leaps_coef)[-1],
+    lars_coef = names(lars_coef[lars_coef != 0])
+  )
+}
+```
+
+```{r}
+# Calculate PRESS function
+calculate_PRESS <- function(model) {
+  resid <- residuals(model)
+  hatval <- hatvalues(model)
+  sum((resid/ (1 - hatval))^2)
+}
+```
+
+
+
+```{r}
+# Process data for each country
+results_usa <- process_country_data(Auto.usa)
+results_europe <- process_country_data(Auto.germany)
+results_japan <- process_country_data(Auto.japan)
+
+# Analyze the results by looking at non-zero coefficients in LARS and selected coefficients in Leaps
+lars_coeffs_usa <- results_usa$lars_model$beta
+leaps_coeffs_usa <- coef(results_usa$best_model_leaps)
+
+lars_coeffs_europe <- results_europe$lars_model$beta
+leaps_coeffs_europe <- coef(results_europe$best_model_leaps)
+
+lars_coeffs_japan <- results_japan$lars_model$beta
+leaps_coeffs_japan <- coef(results_japan$best_model_leaps)
+
+# Print non-zero coefficients for LARS and selected coefficients for Leaps for each country
+cat("USA LARS Coefficients: \n")
+print(lars_coeffs_usa[lars_coeffs_usa != 0])
+cat("\nUSA Leaps Coefficients: \n")
+print(leaps_coeffs_usa[leaps_coeffs_usa != 0])
+
+cat("\nEurope LARS Coefficients: \n")
+print(lars_coeffs_europe[lars_coeffs_europe != 0])
+cat("\nEurope Leaps Coefficients: \n")
+print(leaps_coeffs_europe[leaps_coeffs_europe != 0])
+
+cat("\nJapan LARS Coefficients: \n")
+print(lars_coeffs_japan[lars_coeffs_japan != 0])
+cat("\nJapan Leaps Coefficients: \n")
+print(leaps_coeffs_japan[leaps_coeffs_japan != 0])
+```
+
